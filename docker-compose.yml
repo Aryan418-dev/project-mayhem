@@ -1,0 +1,23 @@
+# Project Mayhem - Local development stack
+# Usage:
+#   docker compose up -d livekit        # Start LiveKit server only
+#   docker compose up                   # Start LiveKit + Redis (if needed later)
+
+services:
+  livekit:
+    image: livekit/livekit-server:latest
+    command: --dev --bind 0.0.0.0
+    ports:
+      - "7880:7880"           # HTTP / WebSocket
+      - "7881:7881"           # RTC TCP
+      - "7882:7882/udp"       # RTC UDP
+    environment:
+      - LIVEKIT_KEYS=devkey: secret
+    restart: unless-stopped
+
+  # Optional: Redis for scaling / room service later
+  # redis:
+  #   image: redis:7-alpine
+  #   ports:
+  #     - "6379:6379"
+  #   restart: unless-stopped
