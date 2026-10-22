@@ -53,7 +53,11 @@ export default function HomePage() {
       });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || "Speak failed");
-      setSpeakStatus("Spoken — you should hear the agent in the room.");
+      setSpeakStatus(
+        data.video
+          ? "Spoken — listen for audio; look for the agent video tile."
+          : "Spoken — you should hear the agent in the room."
+      );
     } catch (e: any) {
       setSpeakStatus(e.message || "Speak failed");
     } finally {
@@ -78,7 +82,7 @@ export default function HomePage() {
         <div className="room-container">
           <header className="header">
             <h1>Project Mayhem</h1>
-            <span className="badge">Phase 1 · Week 2 · Speech</span>
+            <span className="badge">Phase 1 · Week 3 · Speech + Video</span>
             <button
               className="btn-secondary leave"
               onClick={() => {
@@ -173,7 +177,7 @@ export default function HomePage() {
       <div className="card">
         <h1>Project Mayhem</h1>
         <p className="subtitle">Real-time video interaction</p>
-        <p className="phase">Phase 1 — Week 2 · Speech</p>
+        <p className="phase">Phase 1 — Week 3 · Speech + Video</p>
 
         <label>
           Identity
@@ -195,7 +199,7 @@ export default function HomePage() {
         </button>
 
         <p className="hint">
-          Join the room, then use the Speak bar to hear the agent via TTS.
+          Join the room, then use Speak for TTS. A face video tile may appear (placeholder on free Render).
         </p>
       </div>
 
