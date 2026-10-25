@@ -22,6 +22,7 @@ export default function HomePage() {
   const [speakText, setSpeakText] = useState(
     "Hello from Project Mayhem. The speech pipeline is online."
   );
+  const [chatMessage, setChatMessage] = useState("hello");
   const [speaking, setSpeaking] = useState(false);
   const [speakStatus, setSpeakStatus] = useState<string | null>(null);
 
@@ -65,6 +66,25 @@ export default function HomePage() {
     }
   }, [speakText]);
 
+  const triggerChat = useCallback(async () => {
+    setSpeaking(true);
+    setSpeakStatus(null);
+    try {
+      const res = await fetch(`${TOKEN_SERVER}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: chatMessage, room: DEFAULT_ROOM }),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || "Chat failed");
+      setSpeakStatus(`Agent: ${data.reply || "replied"}`);
+    } catch (e: any) {
+      setSpeakStatus(e.message || "Chat failed");
+    } finally {
+      setSpeaking(false);
+    }
+  }, [chatMessage]);
+
   if (token && url) {
     return (
       <LiveKitRoom
@@ -82,7 +102,7 @@ export default function HomePage() {
         <div className="room-container">
           <header className="header">
             <h1>Project Mayhem</h1>
-            <span className="badge">Phase 1 · Week 3 · Speech + Video</span>
+            <span className="badge">Phase 1 · Week 4 · Chat</span>
             <button
               className="btn-secondary leave"
               onClick={() => {
@@ -95,16 +115,29 @@ export default function HomePage() {
           </header>
           <div className="speak-bar">
             <input
-              value={speakText}
-              onChange={(e) => setSpeakText(e.target.value)}
-              placeholder="Text for the agent to speak…"
+              value={chatMessage}
+              onChange={(e) => setChatMessage(e.target.value)}
+              placeholder="Type a message to the agent…"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !speaking && chatMessage.trim()) {
+                  triggerChat();
+                }
+              }}
             />
             <button
               className="btn-primary"
+              onClick={triggerChat}
+              disabled={speaking || !chatMessage.trim()}
+            >
+              {speaking ? "Replying…" : "Send"}
+            </button>
+            <button
+              className="btn-secondary"
               onClick={triggerSpeak}
               disabled={speaking || !speakText.trim()}
+              title="Speak fixed line (TTS test)"
             >
-              {speaking ? "Speaking…" : "Speak"}
+              TTS test
             </button>
             {speakStatus && <span className="speak-status">{speakStatus}</span>}
           </div>
@@ -177,7 +210,7 @@ export default function HomePage() {
       <div className="card">
         <h1>Project Mayhem</h1>
         <p className="subtitle">Real-time video interaction</p>
-        <p className="phase">Phase 1 — Week 3 · Speech + Video</p>
+        <p className="phase">Phase 1 — Week 4 · Interactive chat</p>
 
         <label>
           Identity
@@ -199,7 +232,7 @@ export default function HomePage() {
         </button>
 
         <p className="hint">
-          Join the room, then use Speak for TTS. A face video tile may appear (placeholder on free Render).
+          Join the room, type a message, press Send. The agent picks a simple reply and speaks it.
         </p>
       </div>
 
