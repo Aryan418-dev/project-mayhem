@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   LiveKitRoom,
   VideoConference,
@@ -11,6 +11,15 @@ const TOKEN_SERVER =
   process.env.NEXT_PUBLIC_TOKEN_SERVER || "http://localhost:8000";
 const DEFAULT_ROOM = "project-mayhem-room";
 
+// Browser speech recognition (Chrome / Edge). Optional — type works too.
+function getSpeechRecognition(): any | null {
+  if (typeof window === "undefined") return null;
+  const W = window as any;
+  const Ctor = W.SpeechRecognition || W.webkitSpeechRecognition;
+  if (!Ctor) return null;
+  return new Ctor();
+}
+
 export default function HomePage() {
   const [token, setToken] = useState<string | null>(null);
   const [url, setUrl] = useState<string>("");
@@ -19,12 +28,14 @@ export default function HomePage() {
   );
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [speakText, setSpeakText] = useState(
+  const [speakText] = useState(
     "Hello from Project Mayhem. The speech pipeline is online."
   );
   const [chatMessage, setChatMessage] = useState("hello");
   const [speaking, setSpeaking] = useState(false);
+  const [listening, setListening] = useState(false);
   const [speakStatus, setSpeakStatus] = useState<string | null>(null);
+  const recognitionRef = useRef<any>(null);
 
   const fetchToken = useCallback(async () => {
     setConnecting(true);
@@ -43,6 +54,32 @@ export default function HomePage() {
     }
   }, [identity]);
 
+  const sendChat = useCallback(async (message: string) => {
+    const text = message.trim();
+    if (!text) return;
+
+    setSpeaking(true);
+    setSpeakStatus(null);
+    try {
+      const res = await fetch(`${TOKEN_SERVER}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: text, room: DEFAULT_ROOM }),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || "Chat failed");
+      setSpeakStatus(`Agent: ${data.reply || "replied"}`);
+    } catch (e: any) {
+      setSpeakStatus(e.message || "Chat failed");
+    } finally {
+      setSpeaking(false);
+    }
+  }, []);
+
+  const triggerChat = useCallback(() => {
+    void sendChat(chatMessage);
+  }, [chatMessage, sendChat]);
+
   const triggerSpeak = useCallback(async () => {
     setSpeaking(true);
     setSpeakStatus(null);
@@ -54,11 +91,7 @@ export default function HomePage() {
       });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || "Speak failed");
-      setSpeakStatus(
-        data.video
-          ? "Spoken — listen for audio; look for the agent video tile."
-          : "Spoken — you should hear the agent in the room."
-      );
+      setSpeakStatus("Spoken — you should hear the agent.");
     } catch (e: any) {
       setSpeakStatus(e.message || "Speak failed");
     } finally {
@@ -66,24 +99,53 @@ export default function HomePage() {
     }
   }, [speakText]);
 
-  const triggerChat = useCallback(async () => {
-    setSpeaking(true);
-    setSpeakStatus(null);
-    try {
-      const res = await fetch(`${TOKEN_SERVER}/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: chatMessage, room: DEFAULT_ROOM }),
-      });
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error || "Chat failed");
-      setSpeakStatus(`Agent: ${data.reply || "replied"}`);
-    } catch (e: any) {
-      setSpeakStatus(e.message || "Chat failed");
-    } finally {
-      setSpeaking(false);
+  const startListening = useCallback(() => {
+    if (speaking || listening) return;
+
+    const recognition = getSpeechRecognition();
+    if (!recognition) {
+      setSpeakStatus("Voice input not supported in this browser. Type instead.");
+      return;
     }
-  }, [chatMessage]);
+
+    recognition.lang = "en-US";
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => {
+      setListening(true);
+      setSpeakStatus("Listening… speak now.");
+    };
+
+    recognition.onerror = (event: any) => {
+      setListening(false);
+      setSpeakStatus(`Mic error: ${event.error}`);
+    };
+
+    recognition.onend = () => {
+      setListening(false);
+    };
+
+    recognition.onresult = (event: any) => {
+      const heard = event.results[0]?.[0]?.transcript?.trim() || "";
+      setListening(false);
+      if (!heard) {
+        setSpeakStatus("Did not catch speech. Try again.");
+        return;
+      }
+      setChatMessage(heard);
+      setSpeakStatus(`You said: ${heard}`);
+      void sendChat(heard);
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+  }, [listening, speaking, sendChat]);
+
+  const stopListening = useCallback(() => {
+    recognitionRef.current?.stop();
+    setListening(false);
+  }, []);
 
   if (token && url) {
     return (
@@ -102,10 +164,11 @@ export default function HomePage() {
         <div className="room-container">
           <header className="header">
             <h1>Project Mayhem</h1>
-            <span className="badge">Phase 1 · Week 4 · Chat</span>
+            <span className="badge">Phase 1 · Week 4 · Voice + Chat</span>
             <button
               className="btn-secondary leave"
               onClick={() => {
+                stopListening();
                 setToken(null);
                 setConnecting(false);
               }}
@@ -117,7 +180,7 @@ export default function HomePage() {
             <input
               value={chatMessage}
               onChange={(e) => setChatMessage(e.target.value)}
-              placeholder="Type a message to the agent…"
+              placeholder="Type a message, or use Mic…"
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !speaking && chatMessage.trim()) {
                   triggerChat();
@@ -127,15 +190,23 @@ export default function HomePage() {
             <button
               className="btn-primary"
               onClick={triggerChat}
-              disabled={speaking || !chatMessage.trim()}
+              disabled={speaking || listening || !chatMessage.trim()}
             >
               {speaking ? "Replying…" : "Send"}
             </button>
             <button
+              className={listening ? "btn-mic active" : "btn-mic"}
+              onClick={listening ? stopListening : startListening}
+              disabled={speaking}
+              title="Speak with the microphone"
+            >
+              {listening ? "Stop" : "Mic"}
+            </button>
+            <button
               className="btn-secondary"
               onClick={triggerSpeak}
-              disabled={speaking || !speakText.trim()}
-              title="Speak fixed line (TTS test)"
+              disabled={speaking || listening}
+              title="Speak a fixed test line"
             >
               TTS test
             </button>
@@ -191,6 +262,20 @@ export default function HomePage() {
             color: var(--fg);
             font-size: 14px;
           }
+          .btn-mic {
+            padding: 8px 14px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: var(--bg);
+            color: var(--fg);
+            cursor: pointer;
+            font-size: 14px;
+          }
+          .btn-mic.active {
+            background: #c0392b;
+            color: white;
+            border-color: #c0392b;
+          }
           .speak-status {
             font-size: 12px;
             color: var(--muted);
@@ -210,7 +295,7 @@ export default function HomePage() {
       <div className="card">
         <h1>Project Mayhem</h1>
         <p className="subtitle">Real-time video interaction</p>
-        <p className="phase">Phase 1 — Week 4 · Interactive chat</p>
+        <p className="phase">Phase 1 — Week 4 · Voice + Chat</p>
 
         <label>
           Identity
@@ -232,7 +317,8 @@ export default function HomePage() {
         </button>
 
         <p className="hint">
-          Join the room, type a message, press Send. The agent picks a simple reply and speaks it.
+          Join, then type a message or press Mic (Chrome/Edge). The agent
+          replies with speech.
         </p>
       </div>
 
