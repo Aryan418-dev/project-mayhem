@@ -1,10 +1,11 @@
 """
-Project Mayhem server – token + TTS + simple video track.
+Project Mayhem server – token + TTS + simple video track + chat.
 
 Endpoints:
   GET  /health
   GET  /token
   POST /speak   body: { "text": "...", "room": "..." }
+  POST /chat    body: { "message": "...", "room": "..." }
   GET  /voices
 """
 
@@ -35,7 +36,6 @@ LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET", "secret")
 ROOM_NAME = os.getenv("ROOM_NAME", "project-mayhem-room")
 AGENT_NAME = os.getenv("AGENT_NAME", "project-mayhem-agent")
 PORT = int(os.environ.get("PORT", "8000"))
-# Publish a simple face video while speaking (no GPU needed)
 ENABLE_VIDEO = os.getenv("ENABLE_VIDEO", "true").lower() in ("1", "true", "yes")
 
 
@@ -208,9 +208,20 @@ class SpeakBody(BaseModel):
     room: str | None = None
 
 
+class ChatBody(BaseModel):
+    message: str
+    room: str | None = None
+
+
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "speak-agent", "video": ENABLE_VIDEO}
+    return {
+        "status": "ok",
+        "service": "speak-agent",
+        "video": ENABLE_VIDEO,
+        "week": 4,
+        "features": ["token", "speak", "chat"],
+    }
 
 
 @app.get("/token")
@@ -247,6 +258,25 @@ async def speak(body: SpeakBody):
     except Exception as e:
         log.exception("speak failed")
         return {"ok": False, "error": str(e)}
+
+
+@app.post("/chat")
+async def chat(body: ChatBody):
+    """User message → simple reply → speak in the LiveKit room."""
+    from replies import make_reply
+
+    if not body.message.strip():
+        return {"ok": False, "error": "message is empty"}
+
+    reply = make_reply(body.message)
+    try:
+        result = await speak_in_room(reply, room_name=body.room)
+        result["reply"] = reply
+        result["user_message"] = body.message.strip()
+        return result
+    except Exception as e:
+        log.exception("chat failed")
+        return {"ok": False, "error": str(e), "reply": reply}
 
 
 @app.get("/voices")
