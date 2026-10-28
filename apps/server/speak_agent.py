@@ -58,11 +58,11 @@ def make_livekit_token(identity: str, room: str) -> str:
     )
 
 
-def mp3_to_pcm(mp3_bytes: bytes, sample_rate: int = 48000) -> bytes:
-    """Turn TTS mp3 into 16-bit mono PCM. Needs pydub + ffmpeg."""
+def audio_bytes_to_pcm(audio_bytes: bytes, sample_rate: int = 48000) -> bytes:
+    """Decode TTS output (wav from Gnani or mp3 from edge-tts) to 16-bit mono PCM."""
     from pydub import AudioSegment
 
-    audio = AudioSegment.from_file(io.BytesIO(mp3_bytes), format="mp3")
+    audio = AudioSegment.from_file(io.BytesIO(audio_bytes))
     audio = audio.set_frame_rate(sample_rate).set_channels(1).set_sample_width(2)
     return audio.raw_data
 
@@ -173,8 +173,8 @@ async def speak_in_room(text: str, room_name: str | None = None) -> dict:
     await room.connect(LIVEKIT_URL, token)
 
     try:
-        mp3 = await synthesize_to_mp3_bytes(text)
-        pcm = mp3_to_pcm(mp3, sample_rate=48000)
+        audio = await synthesize_to_mp3_bytes(text)
+        pcm = audio_bytes_to_pcm(audio, sample_rate=48000)
         duration = (len(pcm) // 2) / 48000.0
 
         jobs = [publish_audio(room, pcm)]
@@ -215,12 +215,15 @@ class ChatBody(BaseModel):
 
 @app.get("/health")
 async def health():
+    from tts import active_backend
+
     return {
         "status": "ok",
         "service": "speak-agent",
         "video": ENABLE_VIDEO,
         "week": 4,
-        "features": ["token", "speak", "chat"],
+        "tts": active_backend(),
+        "features": ["token", "speak", "chat", "gnani-tts"],
     }
 
 
