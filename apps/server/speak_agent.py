@@ -215,14 +215,16 @@ class ChatBody(BaseModel):
 
 @app.get("/health")
 async def health():
-    from tts import active_backend
+    from tts import active_backend, debug_env
 
+    info = debug_env()
     return {
         "status": "ok",
         "service": "speak-agent",
         "video": ENABLE_VIDEO,
         "week": 4,
         "tts": active_backend(),
+        "tts_debug": info,
         "features": ["token", "speak", "chat", "gnani-tts"],
     }
 
