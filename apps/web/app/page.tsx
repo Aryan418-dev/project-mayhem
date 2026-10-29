@@ -11,7 +11,14 @@ const TOKEN_SERVER =
   process.env.NEXT_PUBLIC_TOKEN_SERVER || "http://localhost:8000";
 const DEFAULT_ROOM = "project-mayhem-room";
 
-// Browser speech recognition (Chrome / Edge). Optional — type works too.
+const DEMO_PROMPTS = [
+  "Namaste",
+  "What is your name?",
+  "Kaise ho?",
+  "Help",
+  "Tell me about Gnani Timbre",
+];
+
 function getSpeechRecognition(): any | null {
   if (typeof window === "undefined") return null;
   const W = window as any;
@@ -31,16 +38,19 @@ export default function HomePage() {
   const [speakText] = useState(
     "Hello from Project Mayhem. The speech pipeline is online."
   );
-  const [chatMessage, setChatMessage] = useState("hello");
+  const [chatMessage, setChatMessage] = useState("Namaste");
   const [speaking, setSpeaking] = useState(false);
   const [listening, setListening] = useState(false);
   const [speakStatus, setSpeakStatus] = useState<string | null>(null);
+  const [micLang, setMicLang] = useState<"en-IN" | "hi-IN" | "en-US">("en-IN");
   const recognitionRef = useRef<any>(null);
 
   const fetchToken = useCallback(async () => {
     setConnecting(true);
     setError(null);
     try {
+      void fetch(`${TOKEN_SERVER}/health`).catch(() => {});
+
       const res = await fetch(
         `${TOKEN_SERVER}/token?room=${DEFAULT_ROOM}&identity=${identity}&name=${identity}`
       );
@@ -108,13 +118,13 @@ export default function HomePage() {
       return;
     }
 
-    recognition.lang = "en-US";
+    recognition.lang = micLang;
     recognition.interimResults = false;
     recognition.maxAlternatives = 1;
 
     recognition.onstart = () => {
       setListening(true);
-      setSpeakStatus("Listening… speak now.");
+      setSpeakStatus(`Listening (${micLang})… speak now.`);
     };
 
     recognition.onerror = (event: any) => {
@@ -140,7 +150,7 @@ export default function HomePage() {
 
     recognitionRef.current = recognition;
     recognition.start();
-  }, [listening, speaking, sendChat]);
+  }, [listening, speaking, sendChat, micLang]);
 
   const stopListening = useCallback(() => {
     recognitionRef.current?.stop();
@@ -164,7 +174,7 @@ export default function HomePage() {
         <div className="room-container">
           <header className="header">
             <h1>Project Mayhem</h1>
-            <span className="badge">Phase 1 · Week 4 · Voice + Chat</span>
+            <span className="badge">Phase 1 · Week 4 · Gnani ready</span>
             <button
               className="btn-secondary leave"
               onClick={() => {
@@ -202,6 +212,19 @@ export default function HomePage() {
             >
               {listening ? "Stop" : "Mic"}
             </button>
+            <select
+              className="lang-select"
+              value={micLang}
+              onChange={(e) =>
+                setMicLang(e.target.value as "en-IN" | "hi-IN" | "en-US")
+              }
+              title="Microphone language"
+              disabled={listening}
+            >
+              <option value="en-IN">Mic: en-IN</option>
+              <option value="hi-IN">Mic: hi-IN</option>
+              <option value="en-US">Mic: en-US</option>
+            </select>
             <button
               className="btn-secondary"
               onClick={triggerSpeak}
@@ -211,6 +234,21 @@ export default function HomePage() {
               TTS test
             </button>
             {speakStatus && <span className="speak-status">{speakStatus}</span>}
+          </div>
+          <div className="chips">
+            {DEMO_PROMPTS.map((p) => (
+              <button
+                key={p}
+                className="chip"
+                disabled={speaking || listening}
+                onClick={() => {
+                  setChatMessage(p);
+                  void sendChat(p);
+                }}
+              >
+                {p}
+              </button>
+            ))}
           </div>
           <main className="main">
             <VideoConference />
@@ -262,6 +300,14 @@ export default function HomePage() {
             color: var(--fg);
             font-size: 14px;
           }
+          .lang-select {
+            padding: 8px 10px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: var(--bg);
+            color: var(--fg);
+            font-size: 13px;
+          }
           .btn-mic {
             padding: 8px 14px;
             border-radius: 8px;
@@ -281,6 +327,27 @@ export default function HomePage() {
             color: var(--muted);
             width: 100%;
           }
+          .chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            padding: 8px 16px;
+            border-bottom: 1px solid var(--border);
+            background: var(--bg);
+          }
+          .chip {
+            font-size: 12px;
+            padding: 4px 10px;
+            border-radius: 999px;
+            border: 1px solid var(--border);
+            background: var(--card);
+            color: var(--fg);
+            cursor: pointer;
+          }
+          .chip:disabled {
+            opacity: 0.5;
+            cursor: default;
+          }
           .main {
             flex: 1;
             overflow: hidden;
@@ -295,7 +362,7 @@ export default function HomePage() {
       <div className="card">
         <h1>Project Mayhem</h1>
         <p className="subtitle">Real-time video interaction</p>
-        <p className="phase">Phase 1 — Week 4 · Voice + Chat</p>
+        <p className="phase">Phase 1 — Week 4 · Voice + Chat · Gnani</p>
 
         <label>
           Identity
@@ -317,8 +384,8 @@ export default function HomePage() {
         </button>
 
         <p className="hint">
-          Join, then type a message or press Mic (Chrome/Edge). The agent
-          replies with speech.
+          Join, then use a demo chip, type a message, or press Mic (Chrome/Edge).
+          Try &quot;Namaste&quot; for Hinglish. Agent replies with speech.
         </p>
       </div>
 
