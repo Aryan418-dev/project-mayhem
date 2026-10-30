@@ -27,6 +27,29 @@ function getSpeechRecognition(): any | null {
   return new Ctor();
 }
 
+/** Pick a MediaRecorder mime type the browser supports. */
+function pickRecorderMime(): string {
+  const candidates = [
+    "audio/webm;codecs=opus",
+    "audio/webm",
+    "audio/ogg;codecs=opus",
+    "audio/ogg",
+    "audio/mp4",
+  ];
+  for (const t of candidates) {
+    if (typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(t)) {
+      return t;
+    }
+  }
+  return "";
+}
+
+function extensionForMime(mime: string): string {
+  if (mime.includes("ogg")) return "ogg";
+  if (mime.includes("mp4") || mime.includes("m4a")) return "m4a";
+  return "webm";
+}
+
 export default function HomePage() {
   const [token, setToken] = useState<string | null>(null);
   const [url, setUrl] = useState<string>("");
@@ -41,9 +64,12 @@ export default function HomePage() {
   const [chatMessage, setChatMessage] = useState("Namaste");
   const [speaking, setSpeaking] = useState(false);
   const [listening, setListening] = useState(false);
+  const [recording, setRecording] = useState(false);
   const [speakStatus, setSpeakStatus] = useState<string | null>(null);
   const [micLang, setMicLang] = useState<"en-IN" | "hi-IN" | "en-US">("en-IN");
   const recognitionRef = useRef<any>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordChunksRef = useRef<Blob[]>([]);
 
   const fetchToken = useCallback(async () => {
     setConnecting(true);
@@ -110,11 +136,11 @@ export default function HomePage() {
   }, [speakText]);
 
   const startListening = useCallback(() => {
-    if (speaking || listening) return;
+    if (speaking || listening || recording) return;
 
     const recognition = getSpeechRecognition();
     if (!recognition) {
-      setSpeakStatus("Voice input not supported in this browser. Type instead.");
+      setSpeakStatus("Browser Mic not supported. Use Record (Prisma) instead.");
       return;
     }
 
@@ -150,11 +176,97 @@ export default function HomePage() {
 
     recognitionRef.current = recognition;
     recognition.start();
-  }, [listening, speaking, sendChat, micLang]);
+  }, [listening, speaking, recording, sendChat, micLang]);
 
   const stopListening = useCallback(() => {
     recognitionRef.current?.stop();
     setListening(false);
+  }, []);
+
+  const uploadVoiceChat = useCallback(
+    async (blob: Blob, mime: string) => {
+      setSpeaking(true);
+      setSpeakStatus("Sending audio to Prisma STT…");
+      try {
+        const form = new FormData();
+        const ext = extensionForMime(mime);
+        form.append("audio_file", blob, `recording.${ext}`);
+        form.append("room", DEFAULT_ROOM);
+        if (micLang === "hi-IN") {
+          form.append("language_code", "hi-IN");
+        } else if (micLang === "en-IN" || micLang === "en-US") {
+          form.append("language_code", "en-IN");
+        }
+
+        const res = await fetch(`${TOKEN_SERVER}/voice-chat`, {
+          method: "POST",
+          body: form,
+        });
+        const data = await res.json();
+        if (!data.ok) {
+          throw new Error(data.error || `voice-chat failed (${data.stage || "?"})`);
+        }
+        if (data.user_message) {
+          setChatMessage(data.user_message);
+        }
+        setSpeakStatus(
+          `You (Prisma): ${data.user_message || "?"} → Agent: ${data.reply || "replied"}`
+        );
+      } catch (e: any) {
+        setSpeakStatus(e.message || "Prisma voice-chat failed");
+      } finally {
+        setSpeaking(false);
+      }
+    },
+    [micLang]
+  );
+
+  const startRecording = useCallback(async () => {
+    if (speaking || listening || recording) return;
+
+    if (typeof MediaRecorder === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      setSpeakStatus("Recording not supported in this browser.");
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mime = pickRecorderMime();
+      const recorder = mime
+        ? new MediaRecorder(stream, { mimeType: mime })
+        : new MediaRecorder(stream);
+
+      recordChunksRef.current = [];
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) recordChunksRef.current.push(e.data);
+      };
+      recorder.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const usedMime = recorder.mimeType || mime || "audio/webm";
+        const blob = new Blob(recordChunksRef.current, { type: usedMime });
+        setRecording(false);
+        if (blob.size < 500) {
+          setSpeakStatus("Recording too short. Hold Record and speak ~2–8 seconds.");
+          return;
+        }
+        void uploadVoiceChat(blob, usedMime);
+      };
+
+      mediaRecorderRef.current = recorder;
+      recorder.start();
+      setRecording(true);
+      setSpeakStatus("Recording… speak, then press Stop record.");
+    } catch (e: any) {
+      setSpeakStatus(e.message || "Could not access microphone");
+    }
+  }, [speaking, listening, recording, uploadVoiceChat]);
+
+  const stopRecording = useCallback(() => {
+    const rec = mediaRecorderRef.current;
+    if (rec && rec.state !== "inactive") {
+      rec.stop();
+    }
+    mediaRecorderRef.current = null;
   }, []);
 
   if (token && url) {
@@ -174,11 +286,12 @@ export default function HomePage() {
         <div className="room-container">
           <header className="header">
             <h1>Project Mayhem</h1>
-            <span className="badge">Phase 1 · Week 4 · Gnani ready</span>
+            <span className="badge">Phase 1 · Week 5 · Timbre + Prisma</span>
             <button
               className="btn-secondary leave"
               onClick={() => {
                 stopListening();
+                stopRecording();
                 setToken(null);
                 setConnecting(false);
               }}
@@ -190,7 +303,7 @@ export default function HomePage() {
             <input
               value={chatMessage}
               onChange={(e) => setChatMessage(e.target.value)}
-              placeholder="Type a message, or use Mic…"
+              placeholder="Type a message, or use Mic / Record…"
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !speaking && chatMessage.trim()) {
                   triggerChat();
@@ -200,17 +313,25 @@ export default function HomePage() {
             <button
               className="btn-primary"
               onClick={triggerChat}
-              disabled={speaking || listening || !chatMessage.trim()}
+              disabled={speaking || listening || recording || !chatMessage.trim()}
             >
               {speaking ? "Replying…" : "Send"}
             </button>
             <button
               className={listening ? "btn-mic active" : "btn-mic"}
               onClick={listening ? stopListening : startListening}
-              disabled={speaking}
-              title="Speak with the microphone"
+              disabled={speaking || recording}
+              title="Browser speech recognition"
             >
               {listening ? "Stop" : "Mic"}
+            </button>
+            <button
+              className={recording ? "btn-mic active" : "btn-mic"}
+              onClick={recording ? stopRecording : startRecording}
+              disabled={speaking || listening}
+              title="Record audio → Gnani Prisma STT → reply"
+            >
+              {recording ? "Stop record" : "Record"}
             </button>
             <select
               className="lang-select"
@@ -218,17 +339,17 @@ export default function HomePage() {
               onChange={(e) =>
                 setMicLang(e.target.value as "en-IN" | "hi-IN" | "en-US")
               }
-              title="Microphone language"
-              disabled={listening}
+              title="Language hint for Mic / Prisma"
+              disabled={listening || recording}
             >
-              <option value="en-IN">Mic: en-IN</option>
-              <option value="hi-IN">Mic: hi-IN</option>
-              <option value="en-US">Mic: en-US</option>
+              <option value="en-IN">Lang: en-IN</option>
+              <option value="hi-IN">Lang: hi-IN</option>
+              <option value="en-US">Lang: en-US</option>
             </select>
             <button
               className="btn-secondary"
               onClick={triggerSpeak}
-              disabled={speaking || listening}
+              disabled={speaking || listening || recording}
               title="Speak a fixed test line"
             >
               TTS test
@@ -240,7 +361,7 @@ export default function HomePage() {
               <button
                 key={p}
                 className="chip"
-                disabled={speaking || listening}
+                disabled={speaking || listening || recording}
                 onClick={() => {
                   setChatMessage(p);
                   void sendChat(p);
@@ -313,8 +434,7 @@ export default function HomePage() {
             border-radius: 8px;
             border: 1px solid var(--border);
             background: var(--bg);
-            color: var(--fg);
-            cursor: pointer;
+            color: var(--n            cursor: pointer;
             font-size: 14px;
           }
           .btn-mic.active {
@@ -362,7 +482,7 @@ export default function HomePage() {
       <div className="card">
         <h1>Project Mayhem</h1>
         <p className="subtitle">Real-time video interaction</p>
-        <p className="phase">Phase 1 — Week 4 · Voice + Chat · Gnani</p>
+        <p className="phase">Phase 1 — Week 5 · Timbre TTS + Prisma STT</p>
 
         <label>
           Identity
@@ -384,8 +504,8 @@ export default function HomePage() {
         </button>
 
         <p className="hint">
-          Join, then use a demo chip, type a message, or press Mic (Chrome/Edge).
-          Try &quot;Namaste&quot; for Hinglish. Agent replies with speech.
+          Join, then use a demo chip, type, Mic (browser), or Record (Prisma STT).
+          Try &quot;Namaste&quot;. Agent replies with Timbre speech.
         </p>
       </div>
 
