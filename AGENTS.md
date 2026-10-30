@@ -1,63 +1,68 @@
 # Agent Instructions for Project Mayhem
 
-This file is the primary source of truth for any AI agent (Grok, Claude, Cursor, Codex, etc.) working on Project Mayhem.
+This file is the primary source of truth for any AI agent working on Project Mayhem.
 
 ## Project Context
 - **Name**: Project Mayhem
-- **Goal**: Build a Griffin-like full-duplex real-time video-to-video Human Interaction Model
-- **Current Focus**: Phase 1 – MVP Real-time Talking Avatar
-- **Key Inspiration**: Tavus Griffin architecture (Continuous Conversational Modeling + Streaming Speech + Streaming Video)
+- **Goal**: Griffin-like full-duplex real-time video-to-video Human Interaction Model
+- **Current focus**: Phase 1 Week 4 — chat + Mic + TTS (Gnani Timbre preferred, edge-tts fallback)
+- **Repo**: https://github.com/Aryan418-dev/project-mayhem
+- **Live web**: https://mayhemm.vercel.app
+- **Live API**: https://project-mayhem-ulmi.onrender.com
 
-## Core Principles
-1. Prefer modular, working pipelines over premature unification.
-2. Latency and natural conversational timing are first-class concerns.
-3. Start simple (rule-based turn-taking) and replace with learned models later.
-4. Document every major decision in this file or in the relevant phase doc.
-5. Keep the monorepo clean. Put temporary scripts in `/tmp` if needed; final code under `apps/` and `packages/`.
+## Coding rule (required)
+Write **simple, human-readable code** only. Clear names, short functions, comments only when needed. A hired developer must own this without reverse-engineering AI patterns.
 
-## Current Phase Priority (Phase 1)
-Follow the detailed plan in `docs/phase-1-mvp.md`.
+## Tool priority for agents
+1. **GitHub** (native `github___*` tools) — source of truth for all code and docs
+2. **mcpgram** — only if GitHub tools fail and mcpgram has a working GitHub/server connection
+3. **Composio** — fallback for Vercel / Render deploy and env when those tools are available
+4. Public HTTP (`/health`, site URL) — always OK for verification
 
-Order of work:
-1. Media loop (LiveKit or Pipecat) – camera/mic ↔ server
-2. Streaming TTS + voice cloning
-3. Real-time video generation (MuseTalk / EchoMimic primary)
-4. Continuous VAD + basic rule-based control
-5. Polish latency and sync
+If Render/Vercel tools are missing in the session, push to GitHub and ask the user to redeploy from the dashboard.
 
-## Recommended Stack (Phase 1)
-- **Media**: LiveKit (preferred for speed) or Pipecat
-- **TTS + Clone**: fish-speech or CosyVoice
-- **Video**: MuseTalk (lip-sync) + EchoMimic V3-Flash (motion)
-- **VAD**: Silero VAD
-- **Backend**: Python 3.11+
-- **Frontend**: Next.js + LiveKit client
-- **GPU**: At least one modern NVIDIA GPU (4090 / A6000 class minimum for comfortable development)
+## Core principles
+1. Modular, working pipelines over premature unification
+2. Latency and natural turn-taking are first-class
+3. Start simple (rule-based replies); replace with LLM later
+4. Document major decisions in this file or phase docs
+5. No large model weights in git
 
-## Decision Log
-- 2026-10-20: Project originally named ProjectX. Starting with Phase 1 MVP.
-- 2026-10-20: Architecture follows two-engine pattern (Continuous Conversational Modeling + Audio-Visual Generation) but implemented modularly at first.
-- 2026-10-20: Prefer LiveKit for initial media layer.
-- 2026-10-20: Scaffolded monorepo (apps/web, apps/server, packages/*, docker-compose, token server, agent skeleton, Next.js frontend). Week 1 media loop scaffolding complete.
-- 2026-10-20: Project renamed from ProjectX to **Project Mayhem**. Folder is now `project-mayhem`.
+## Phase 1 stack
+- Media: LiveKit
+- TTS: Gnani Timbre (`GNANI_API_KEY`) with edge-tts fallback
+- Video: still-face placeholder on free Render; MuseTalk/EchoMimic needs GPU later
+- VAD: browser STT for now; Silero later on GPU host
+- Frontend: Next.js + LiveKit React
+- Backend: Python FastAPI (`apps/server/speak_agent.py`)
 
-## How Agents Should Work
-1. Always read `README.md`, `AGENTS.md`, and the current phase doc before making changes.
-2. When implementing a feature, update the relevant markdown if the plan changes.
-3. Prefer small, testable increments.
-4. Measure latency early and often.
-5. When stuck on model choice, prefer the options listed in `docs/phase-1-mvp.md` and `CONVENTIONS.md`.
-6. Record important new decisions in the Decision Log above.
+## Decision log
+- 2026-10-20: Started as ProjectX → renamed Project Mayhem
+- 2026-10-20: LiveKit preferred for media layer
+- 2026-10-21: Human-readable code rule locked in
+- 2026-10-21: Deployed Vercel (web) + Render (API)
+- 2026-10-28: Gnani Timbre path for internship contest; edge-tts fallback
+- 2026-10-28: Hinglish/Hindi rule-based replies + contest doc
+- 2026-10-29: Frontend demo chips + mic language selector
+- 2026-10-30: Docs refreshed to Week 4 live status
 
-## File Ownership
-- Agents may freely edit code under `apps/` and `packages/`
-- Update markdown documentation when architecture or plan changes
-- Do not commit large model weights
+## Week status (Phase 1)
+| Week | Goal | Status |
+|------|------|--------|
+| 1 | Media loop LiveKit | Done (cloud) |
+| 2 | Speech / TTS into room | Done (edge + Gnani path) |
+| 3 | Video track placeholder | Done (CPU face; no real lip-sync) |
+| 4 | Chat + Mic + contest UX | Done (needs GNANI_API_KEY for Timbre) |
+| 5+ | VAD interruption, GPU lip-sync | Next |
 
-## Next Immediate Action
-User should run the 4-terminal local setup and verify:
-1. Camera appears in the browser
-2. Agent joins the room (check simple_agent.py logs)
-3. Test tone is heard after ~3 seconds
+## How agents should work
+1. Read this file and `docs/gnani-contest.md` before large changes
+2. Push code with GitHub tools; small commits
+3. Prefer editing `speak_agent.py`, `tts.py`, `replies.py`, `apps/web/app/page.tsx`
+4. Never paste secrets into chat or commit them
+5. After deploy, verify `GET /health`
 
-After successful verification, next code task is user-audio echo (or start Week 2 speech pipeline).
+## Next immediate actions
+1. Confirm Render has `GNANI_API_KEY` → health `tts: gnani`
+2. Optional: Hindi demo env (`GNANI_VOICE=Nalini`, `GNANI_LANGUAGE=hi-IN`, `REPLY_LANGUAGE=hi`)
+3. Next code: server-side STT (Prisma) or GPU MuseTalk path on AWS
