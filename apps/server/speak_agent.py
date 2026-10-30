@@ -1,11 +1,13 @@
 """
-Project Mayhem server – token + TTS + simple video track + chat.
+Project Mayhem server – one process for token, TTS, chat, STT, video.
 
 Endpoints:
   GET  /health
   GET  /token
-  POST /speak   body: { "text": "...", "room": "..." }
-  POST /chat    body: { "message": "...", "room": "..." }
+  POST /speak       JSON { text, room? }
+  POST /chat        JSON { message, room? }
+  POST /transcribe  multipart audio_file
+  POST /voice-chat  multipart audio_file + optional room
   GET  /voices
 """
 
@@ -18,7 +20,7 @@ import os
 from datetime import timedelta
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, File, Form, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -59,7 +61,7 @@ def make_livekit_token(identity: str, room: str) -> str:
 
 
 def audio_bytes_to_pcm(audio_bytes: bytes, sample_rate: int = 48000) -> bytes:
-    """Decode TTS output (wav from Gnani or mp3 from edge-tts) to 16-bit mono PCM."""
+    """Decode TTS wav/mp3 to 16-bit mono PCM."""
     from pydub import AudioSegment
 
     audio = AudioSegment.from_file(io.BytesIO(audio_bytes))
@@ -68,7 +70,6 @@ def audio_bytes_to_pcm(audio_bytes: bytes, sample_rate: int = 48000) -> bytes:
 
 
 def make_face_jpeg(size: int = 512) -> bytes:
-    """Simple drawn face used when no REFERENCE_IMAGE_PATH is set."""
     from PIL import Image, ImageDraw
 
     img = Image.new("RGB", (size, size), color=(40, 40, 60))
@@ -131,7 +132,6 @@ async def publish_audio(room, pcm: bytes, sample_rate: int = 48000) -> None:
 
 
 async def publish_face_video(room, duration_sec: float, fps: int = 15) -> None:
-    """Show a still face image as a video track for duration_sec (no GPU)."""
     from livekit import rtc
     from PIL import Image
     import numpy as np
@@ -161,7 +161,6 @@ async def publish_face_video(room, duration_sec: float, fps: int = 15) -> None:
 
 
 async def speak_in_room(text: str, room_name: str | None = None) -> dict:
-    """Join the room, play TTS audio, optionally show face video, leave."""
     from livekit import rtc
     from tts import synthesize_to_mp3_bytes
 
@@ -216,16 +215,18 @@ class ChatBody(BaseModel):
 @app.get("/health")
 async def health():
     from tts import active_backend, debug_env
+    from stt import stt_ready
 
     info = debug_env()
     return {
         "status": "ok",
         "service": "speak-agent",
         "video": ENABLE_VIDEO,
-        "week": 4,
+        "week": 5,
         "tts": active_backend(),
+        "stt": "prisma" if stt_ready() else "none",
         "tts_debug": info,
-        "features": ["token", "speak", "chat", "gnani-tts"],
+        "features": ["token", "speak", "chat", "gnani-tts", "prisma-stt"],
     }
 
 
@@ -267,7 +268,6 @@ async def speak(body: SpeakBody):
 
 @app.post("/chat")
 async def chat(body: ChatBody):
-    """User message → simple reply → speak in the LiveKit room."""
     from replies import make_reply
 
     if not body.message.strip():
@@ -282,6 +282,79 @@ async def chat(body: ChatBody):
     except Exception as e:
         log.exception("chat failed")
         return {"ok": False, "error": str(e), "reply": reply}
+
+
+@app.post("/transcribe")
+async def transcribe(
+    audio_file: UploadFile = File(...),
+    language_code: str | None = Form(default=None),
+):
+    """Upload short audio → Prisma transcript (no speak)."""
+    from stt import transcribe_audio
+
+    data = await audio_file.read()
+    filename = audio_file.filename or "audio.wav"
+    content_type = audio_file.content_type or "audio/wav"
+    result = await transcribe_audio(
+        data,
+        filename=filename,
+        content_type=content_type,
+        language_code=language_code,
+    )
+    return result
+
+
+@app.post("/voice-chat")
+async def voice_chat(
+    audio_file: UploadFile = File(...),
+    room: str | None = Form(default=None),
+    language_code: str | None = Form(default=None),
+):
+    """Upload short audio → Prisma STT → reply → speak in room."""
+    from replies import make_reply
+    from stt import transcribe_audio
+
+    data = await audio_file.read()
+    filename = audio_file.filename or "audio.wav"
+    content_type = audio_file.content_type or "audio/wav"
+
+    stt = await transcribe_audio(
+        data,
+        filename=filename,
+        content_type=content_type,
+        language_code=language_code,
+    )
+    if not stt.get("ok"):
+        return {"ok": False, "error": stt.get("error", "stt failed"), "stage": "stt"}
+
+    user_text = stt.get("transcript") or ""
+    if not user_text:
+        return {
+            "ok": False,
+            "error": "empty transcript",
+            "stage": "stt",
+            "stt": stt,
+        }
+
+    reply = make_reply(user_text)
+    try:
+        result = await speak_in_room(reply, room_name=room)
+        result["user_message"] = user_text
+        result["reply"] = reply
+        result["stt"] = {
+            "model": stt.get("model"),
+            "language": stt.get("language"),
+        }
+        return result
+    except Exception as e:
+        log.exception("voice-chat speak failed")
+        return {
+            "ok": False,
+            "error": str(e),
+            "stage": "speak",
+            "user_message": user_text,
+            "reply": reply,
+        }
 
 
 @app.get("/voices")
