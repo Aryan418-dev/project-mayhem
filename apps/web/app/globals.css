@@ -1,10 +1,30 @@
+/* Project Mayhem — Speakeasy / mcpgram “Refined Tech” language
+   Monochrome foundation + thin RGB brand gradient + clean type
+*/
+
 :root {
-  --bg: #0f0f12;
-  --fg: #e8e8ed;
-  --accent: #6c5ce7;
-  --muted: #888;
-  --card: #1a1a20;
-  --border: #2a2a35;
+  --bg: #0a0a0a;
+  --bg-elevated: #111111;
+  --fg: #f4f4f5;
+  --fg-muted: #a1a1aa;
+  --card: #141414;
+  --border: #262626;
+  --border-strong: #3f3f46;
+  --primary: #fafafa;
+  --primary-fg: #0a0a0a;
+  --danger: #ef4444;
+  --radius: 10px;
+  --radius-pill: 999px;
+  --font-display: "Instrument Serif", "Times New Roman", serif;
+  --font-body: "DM Sans", system-ui, -apple-system, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --rgb-gradient: linear-gradient(
+    90deg,
+    #ff3b30 0%,
+    #ff9500 33%,
+    #34c759 66%,
+    #007aff 100%
+  );
 }
 
 * {
@@ -16,38 +36,79 @@
 html,
 body {
   height: 100%;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-    sans-serif;
+  font-family: var(--font-body);
   background: var(--bg);
   color: var(--fg);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Thin RGB brand line — Speakeasy signature */
+body::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--rgb-gradient);
+  z-index: 1000;
+  pointer-events: none;
 }
 
 button {
+  font-family: var(--font-body);
   cursor: pointer;
   border: none;
-  border-radius: 8px;
-  padding: 10px 18px;
-  font-size: 14px;
+  border-radius: var(--radius);
+  padding: 10px 16px;
+  font-size: 13px;
   font-weight: 500;
-  transition: opacity 0.15s;
+  letter-spacing: 0.01em;
+  transition: background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
 }
 
-button:hover {
-  opacity: 0.9;
+button:hover:not(:disabled) {
+  opacity: 0.92;
 }
 
 button:disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
 .btn-primary {
-  background: var(--accent);
-  color: white;
+  background: var(--primary);
+  color: var(--primary-fg);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #e4e4e7;
 }
 
 .btn-secondary {
-  background: var(--card);
+  background: transparent;
+  color: var(--fg);
+  border: 1px solid var(--border-strong);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  border-color: var(--fg-muted);
+  background: var(--bg-elevated);
+}
+
+.btn-mic {
+  background: var(--bg-elevated);
   color: var(--fg);
   border: 1px solid var(--border);
+}
+
+.btn-mic.active {
+  background: var(--danger);
+  color: white;
+  border-color: var(--danger);
+}
+
+input,
+select {
+  font-family: var(--font-body);
 }

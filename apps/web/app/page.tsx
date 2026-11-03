@@ -36,7 +36,10 @@ function pickRecorderMime(): string {
     "audio/mp4",
   ];
   for (const t of candidates) {
-    if (typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(t)) {
+    if (
+      typeof MediaRecorder !== "undefined" &&
+      MediaRecorder.isTypeSupported(t)
+    ) {
       return t;
     }
   }
@@ -182,18 +185,19 @@ export default function HomePage() {
         const ext = extensionForMime(mime);
         form.append("audio_file", blob, `recording.${ext}`);
         form.append("room", DEFAULT_ROOM);
-        if (micLang === "hi-IN") {
-          form.append("language_code", "hi-IN");
-        } else {
-          form.append("language_code", "en-IN");
-        }
+        form.append(
+          "language_code",
+          micLang === "hi-IN" ? "hi-IN" : "en-IN"
+        );
         const res = await fetch(`${TOKEN_SERVER}/voice-chat`, {
           method: "POST",
           body: form,
         });
         const data = await res.json();
         if (!data.ok) {
-          throw new Error(data.error || `voice-chat failed (${data.stage || "?"})`);
+          throw new Error(
+            data.error || `voice-chat failed (${data.stage || "?"})`
+          );
         }
         if (data.user_message) setChatMessage(data.user_message);
         setSpeakStatus(
@@ -210,7 +214,10 @@ export default function HomePage() {
 
   const startRecording = useCallback(async () => {
     if (speaking || listening || recording) return;
-    if (typeof MediaRecorder === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+    if (
+      typeof MediaRecorder === "undefined" ||
+      !navigator.mediaDevices?.getUserMedia
+    ) {
       setSpeakStatus("Recording not supported in this browser.");
       return;
     }
@@ -266,8 +273,11 @@ export default function HomePage() {
       >
         <div className="room-container">
           <header className="header">
-            <h1>Project Mayhem</h1>
-            <span className="badge">Phase 1 · Week 5 · Timbre + Prisma</span>
+            <div className="brand">
+              <span className="mark" aria-hidden />
+              <h1>Mayhem</h1>
+              <span className="badge">Phase 1 · Week 5</span>
+            </div>
             <button
               className="btn-secondary leave"
               onClick={() => {
@@ -280,13 +290,15 @@ export default function HomePage() {
               Leave
             </button>
           </header>
-          <div className="speak-bar">
+
+          <div className="toolbar">
             <input
               value={chatMessage}
               onChange={(e) => setChatMessage(e.target.value)}
-              placeholder="Type a message, or use Mic / Record…"
+              placeholder="Message, Mic, or Record…"
               onKeyDown={(e) => {
-                if (e.key === "Enter" && !speaking && chatMessage.trim()) triggerChat();
+                if (e.key === "Enter" && !speaking && chatMessage.trim())
+                  triggerChat();
               }}
             />
             <button
@@ -320,9 +332,9 @@ export default function HomePage() {
               }
               disabled={listening || recording}
             >
-              <option value="en-IN">Lang: en-IN</option>
-              <option value="hi-IN">Lang: hi-IN</option>
-              <option value="en-US">Lang: en-US</option>
+              <option value="en-IN">en-IN</option>
+              <option value="hi-IN">hi-IN</option>
+              <option value="en-US">en-US</option>
             </select>
             <button
               className="btn-secondary"
@@ -331,8 +343,15 @@ export default function HomePage() {
             >
               TTS test
             </button>
-            {speakStatus && <span className="speak-status">{speakStatus}</span>}
           </div>
+
+          {speakStatus && (
+            <div className="status-bar">
+              <span className="status-dot" />
+              <span>{speakStatus}</span>
+            </div>
+          )}
+
           <div className="chips">
             {DEMO_PROMPTS.map((p) => (
               <button
@@ -348,107 +367,130 @@ export default function HomePage() {
               </button>
             ))}
           </div>
+
           <main className="main">
             <VideoConference />
           </main>
           <RoomAudioRenderer />
         </div>
+
         <style jsx>{`
           .room-container {
             height: 100vh;
             display: flex;
             flex-direction: column;
+            background: var(--bg);
           }
           .header {
             display: flex;
             align-items: center;
-            gap: 12px;
-            padding: 12px 20px;
+            justify-content: space-between;
+            padding: 14px 20px;
             border-bottom: 1px solid var(--border);
+            background: var(--bg-elevated);
+          }
+          .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+          }
+          .mark {
+            width: 10px;
+            height: 10px;
+            border-radius: 2px;
+            background: var(--rgb-gradient);
+            box-shadow: 0 0 12px rgba(0, 122, 255, 0.35);
           }
           .header h1 {
-            font-size: 18px;
+            font-family: var(--font-display);
+            font-size: 22px;
+            font-weight: 400;
+            letter-spacing: -0.02em;
           }
           .badge {
-            font-size: 12px;
-            background: var(--accent);
-            color: white;
-            padding: 2px 8px;
-            border-radius: 999px;
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: var(--fg-muted);
+            border: 1px solid var(--border);
+            padding: 3px 8px;
+            border-radius: var(--radius-pill);
           }
-          .leave {
-            margin-left: auto;
-          }
-          .speak-bar {
+          .toolbar {
             display: flex;
             flex-wrap: wrap;
             gap: 8px;
             align-items: center;
-            padding: 10px 16px;
+            padding: 12px 16px;
             border-bottom: 1px solid var(--border);
             background: var(--card);
           }
-          .speak-bar input {
+          .toolbar input {
             flex: 1;
-            min-width: 180px;
-            padding: 8px 12px;
-            border-radius: 8px;
+            min-width: 160px;
+            padding: 10px 14px;
+            border-radius: var(--radius);
             border: 1px solid var(--border);
             background: var(--bg);
             color: var(--fg);
             font-size: 14px;
           }
+          .toolbar input:focus {
+            outline: none;
+            border-color: var(--border-strong);
+          }
           .lang-select {
-            padding: 8px 10px;
-            border-radius: 8px;
+            padding: 10px 12px;
+            border-radius: var(--radius);
             border: 1px solid var(--border);
             background: var(--bg);
             color: var(--fg);
             font-size: 13px;
           }
-          .btn-mic {
-            padding: 8px 14px;
-            border-radius: 8px;
-            border: 1px solid var(--border);
-            background: var(--bg);
-            color: var(--fg);
-            cursor: pointer;
-            font-size: 14px;
-          }
-          .btn-mic.active {
-            background: #c0392b;
-            color: white;
-            border-color: #c0392b;
-          }
-          .speak-status {
+          .status-bar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
             font-size: 12px;
-            color: var(--muted);
-            width: 100%;
+            color: var(--fg-muted);
+            border-bottom: 1px solid var(--border);
+            background: var(--bg);
+          }
+          .status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #34c759;
+            flex-shrink: 0;
           }
           .chips {
             display: flex;
             flex-wrap: wrap;
             gap: 6px;
-            padding: 8px 16px;
+            padding: 10px 16px;
             border-bottom: 1px solid var(--border);
-            background: var(--bg);
           }
           .chip {
             font-size: 12px;
-            padding: 4px 10px;
-            border-radius: 999px;
+            padding: 5px 12px;
+            border-radius: var(--radius-pill);
             border: 1px solid var(--border);
-            background: var(--card);
-            color: var(--fg);
+            background: transparent;
+            color: var(--fg-muted);
             cursor: pointer;
           }
+          .chip:hover:not(:disabled) {
+            color: var(--fg);
+            border-color: var(--border-strong);
+          }
           .chip:disabled {
-            opacity: 0.5;
+            opacity: 0.4;
             cursor: default;
           }
           .main {
             flex: 1;
             overflow: hidden;
+            background: #000;
           }
         `}</style>
       </LiveKitRoom>
@@ -458,9 +500,11 @@ export default function HomePage() {
   return (
     <div className="landing">
       <div className="card">
+        <div className="card-mark" aria-hidden />
         <h1>Project Mayhem</h1>
         <p className="subtitle">Real-time video interaction</p>
-        <p className="phase">Phase 1 — Week 5 · Timbre TTS + Prisma STT</p>
+        <p className="phase">Phase 1 — Week 5 · Timbre + Prisma</p>
+
         <label>
           Identity
           <input
@@ -469,15 +513,23 @@ export default function HomePage() {
             placeholder="your-name"
           />
         </label>
+
         {error && <p className="error">{error}</p>}
-        <button className="btn-primary" onClick={fetchToken} disabled={connecting}>
+
+        <button
+          className="btn-primary join"
+          onClick={fetchToken}
+          disabled={connecting}
+        >
           {connecting ? "Connecting…" : "Join Room"}
         </button>
+
         <p className="hint">
-          Join, then use a demo chip, type, Mic (browser), or Record (Prisma STT).
-          Try "Namaste". Agent replies with Timbre speech.
+          Join, then use a demo chip, type, Mic, or Record (Prisma STT). Try
+          &quot;Namaste&quot; — agent replies with Timbre.
         </p>
       </div>
+
       <style jsx>{`
         .landing {
           min-height: 100vh;
@@ -485,60 +537,80 @@ export default function HomePage() {
           align-items: center;
           justify-content: center;
           padding: 24px;
+          background:
+            radial-gradient(ellipse 80% 50% at 50% -20%, #1a1a2e 0%, transparent 55%),
+            var(--bg);
         }
         .card {
           background: var(--card);
           border: 1px solid var(--border);
           border-radius: 16px;
-          padding: 40px;
+          padding: 40px 36px;
           max-width: 400px;
           width: 100%;
           text-align: center;
         }
+        .card-mark {
+          width: 28px;
+          height: 4px;
+          margin: 0 auto 20px;
+          border-radius: 2px;
+          background: var(--rgb-gradient);
+        }
         h1 {
-          font-size: 28px;
-          margin-bottom: 4px;
+          font-family: var(--font-display);
+          font-size: 32px;
+          font-weight: 400;
+          letter-spacing: -0.03em;
+          margin-bottom: 6px;
         }
         .subtitle {
-          color: var(--muted);
-          margin-bottom: 8px;
+          color: var(--fg-muted);
+          font-size: 14px;
+          margin-bottom: 6px;
         }
         .phase {
-          font-size: 13px;
-          color: var(--accent);
+          font-family: var(--font-mono);
+          font-size: 11px;
+          color: var(--fg-muted);
           margin-bottom: 28px;
         }
         label {
           display: block;
           text-align: left;
-          font-size: 13px;
-          color: var(--muted);
+          font-size: 12px;
+          color: var(--fg-muted);
           margin-bottom: 20px;
         }
         input {
           display: block;
           width: 100%;
           margin-top: 6px;
-          padding: 10px 12px;
-          border-radius: 8px;
+          padding: 11px 12px;
+          border-radius: var(--radius);
           border: 1px solid var(--border);
           background: var(--bg);
           color: var(--fg);
           font-size: 14px;
         }
+        input:focus {
+          outline: none;
+          border-color: var(--border-strong);
+        }
         .error {
-          color: #ff6b6b;
+          color: var(--danger);
           font-size: 13px;
           margin-bottom: 12px;
         }
-        .btn-primary {
+        .join {
           width: 100%;
           margin-bottom: 16px;
+          padding: 12px 18px;
         }
         .hint {
           font-size: 12px;
-          color: var(--muted);
-          line-height: 1.5;
+          color: var(--fg-muted);
+          line-height: 1.55;
         }
       `}</style>
     </div>
